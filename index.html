@@ -7,7 +7,7 @@
 </head>
 <body>
     <h2>WebRTC Demo</h2>
-    
+
     <!-- Video display for the sender -->
     <h3 id="senderTitle">Your Camera (Sender)</h3>
     <video id="localVideo" autoplay playsinline></video>
@@ -81,8 +81,8 @@
             });
 
             socket.on('ice-candidate', (candidate) => {
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
                 console.log('Received ICE candidate');
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
             });
         }
 
