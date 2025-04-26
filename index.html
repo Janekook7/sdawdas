@@ -3,79 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Demo</title>
+    <title>WebRTC Demo - Remote Camera</title>
 </head>
 <body>
-    <h2>Remote Camera Feed:</h2>
+    <h2>Remote Camera Feed (Second PC):</h2>
     <video id="remoteVideo" autoplay></video>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
     <script>
         const socket = io.connect('http://localhost:5000'); // Replace with your signaling server URL
-        const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
 
-        let localStream;
         let peerConnection;
         const iceServers = {
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }, // Use a public STUN server
-                // Optional TURN server (if needed)
-                { urls: 'turn:your-turn-server.com', username: 'user', credential: 'password' }
+                { urls: 'stun:stun.l.google.com:19302' }, // Public STUN server
+                // Optional: You can add TURN server configurations here if needed
             ]
         };
 
-        // Set up local video stream
-        async function getLocalStream() {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            localVideo.srcObject = localStream;
-        }
-
-        // WebRTC setup
+        // WebRTC setup for receiving the second PC's camera feed
         async function createPeerConnection() {
             peerConnection = new RTCPeerConnection(iceServers);
 
-            // Send ICE candidates to the signaling server
+            // When remote stream is received, display it on the second PC's video element
+            peerConnection.ontrack = ({ streams: [stream] }) => {
+                remoteVideo.srcObject = stream;
+            };
+
+            // Handle incoming ICE candidates
             peerConnection.onicecandidate = ({ candidate }) => {
                 if (candidate) {
                     socket.emit('ice-candidate', candidate);
                 }
             };
 
-            // Display remote stream when connection is established
-            peerConnection.ontrack = ({ streams: [stream] }) => {
-                remoteVideo.srcObject = stream;
-            };
+            // Listen for offer from the first PC (sending device)
+            socket.on('offer', async (offer) => {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('answer', answer);
+            });
 
-            // Add local stream to the peer connection
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-            // Create an offer and send it to the signaling server
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('offer', offer);
+            // Handle incoming ICE candidates
+            socket.on('ice-candidate', (candidate) => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
         }
 
-        // Handle incoming offer
-        socket.on('offer', async (offer) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('answer', answer);
-        });
-
-        // Handle incoming answer
-        socket.on('answer', (answer) => {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        });
-
-        // Handle incoming ICE candidates
-        socket.on('ice-candidate', (candidate) => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        });
-
-        // Start the process
-        getLocalStream();
+        // Initialize the WebRTC connection and start receiving the second PC's camera feed
         createPeerConnection();
     </script>
 </body>
