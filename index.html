@@ -6,12 +6,25 @@
 </head>
 <body>
     <h1>WebRTC Demo</h1>
-    <video id="video" autoplay playsinline style="width: 500px; border: 1px solid black;"></video>
+
+    <div id="sender-area" style="display:none;">
+        <h2>Sender (You)</h2>
+        <video id="localVideo" autoplay playsinline muted style="width: 500px; border: 1px solid blue;"></video>
+    </div>
+
+    <div id="viewer-area" style="display:none;">
+        <h2>Viewer (Receiving)</h2>
+        <video id="remoteVideo" autoplay playsinline style="width: 500px; border: 1px solid green;"></video>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
     <script>
         const socket = io.connect('http://localhost:5000');
-        const video = document.getElementById('video');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const senderArea = document.getElementById('sender-area');
+        const viewerArea = document.getElementById('viewer-area');
+
         let localStream;
         let peerConnection;
         const config = {
@@ -28,7 +41,10 @@
             role = r;
             console.log('You are the', role);
             if (role === 'sender') {
+                senderArea.style.display = 'block';
                 startCamera();
+            } else if (role === 'viewer') {
+                viewerArea.style.display = 'block';
             }
         });
 
@@ -65,7 +81,7 @@
         async function startCamera() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                video.srcObject = localStream;
+                localVideo.srcObject = localStream;
             } catch (error) {
                 console.error('Error accessing media devices.', error);
             }
@@ -82,7 +98,7 @@
 
             peerConnection.ontrack = event => {
                 console.log('Received remote stream');
-                video.srcObject = event.streams[0];
+                remoteVideo.srcObject = event.streams[0];
             };
         }
 
