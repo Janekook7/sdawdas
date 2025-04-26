@@ -32,31 +32,36 @@
 
         // Get the user media (camera)
         async function startSending() {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            localVideo.srcObject = stream;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                console.log("Local stream started.");
+                localVideo.srcObject = stream;
 
-            peerConnection = new RTCPeerConnection(iceServers);
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+                peerConnection = new RTCPeerConnection(iceServers);
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-            peerConnection.onicecandidate = ({ candidate }) => {
-                if (candidate) {
-                    console.log('Sending ICE candidate');
-                    socket.emit('ice-candidate', candidate);
-                }
-            };
+                peerConnection.onicecandidate = ({ candidate }) => {
+                    if (candidate) {
+                        console.log('Sending ICE candidate');
+                        socket.emit('ice-candidate', candidate);
+                    }
+                };
 
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            console.log('Sending offer');
-            socket.emit('offer', offer);
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                console.log('Sending offer');
+                socket.emit('offer', offer);
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+            }
         }
 
         async function startReceiving() {
             peerConnection = new RTCPeerConnection(iceServers);
 
             peerConnection.ontrack = ({ streams: [stream] }) => {
+                console.log("Received remote stream.");
                 remoteVideo.srcObject = stream;
-                console.log('Received remote stream');
             };
 
             peerConnection.onicecandidate = ({ candidate }) => {
