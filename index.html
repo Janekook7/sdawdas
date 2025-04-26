@@ -11,14 +11,13 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
     <script>
-        const socket = io.connect('http://localhost:5000'); // Replace with your signaling server URL
+        const socket = io.connect('http://localhost:5000'); // Replace with your signaling server URL if needed
         const remoteVideo = document.getElementById('remoteVideo');
 
         let peerConnection;
         const iceServers = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' }, // Public STUN server
-                // Optional: You can add TURN server configurations here if needed
             ]
         };
 
@@ -28,26 +27,31 @@
 
             // When remote stream is received, display it on the second PC's video element
             peerConnection.ontrack = ({ streams: [stream] }) => {
+                console.log('Received remote stream');
                 remoteVideo.srcObject = stream;
             };
 
             // Handle incoming ICE candidates
             peerConnection.onicecandidate = ({ candidate }) => {
                 if (candidate) {
+                    console.log('Sending ICE candidate');
                     socket.emit('ice-candidate', candidate);
                 }
             };
 
             // Listen for offer from the first PC (sending device)
             socket.on('offer', async (offer) => {
+                console.log('Received offer from first PC');
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
                 const answer = await peerConnection.createAnswer();
+                console.log('Sending answer back');
                 await peerConnection.setLocalDescription(answer);
                 socket.emit('answer', answer);
             });
 
             // Handle incoming ICE candidates
             socket.on('ice-candidate', (candidate) => {
+                console.log('Received ICE candidate:', candidate);
                 peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
             });
         }
