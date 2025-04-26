@@ -1,73 +1,97 @@
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
-<script>
-    const socket = io.connect('http://localhost:5000');
-    const video = document.getElementById('remoteVideo');
-    let peerConnection;
-    let localStream;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Tab to Tab</title>
+</head>
+<body>
+    <h2>WebRTC Stream</h2>
+    <video id="remoteVideo" autoplay playsinline style="width: 600px; height: auto; background: black;"></video>
 
-    const iceServers = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-        ]
-    };
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <script>
+        const socket = io.connect('http://localhost:5000');
+        const video = document.getElementById('remoteVideo');
+        let peerConnection;
+        let localStream;
 
-    socket.emit('join');
-
-    socket.on('set-sender', async () => {
-        console.log('You are the Sender 📷');
-        document.body.insertAdjacentHTML('afterbegin', '<h3>You are the Sender 📷</h3>');
-        await startCamera();
-    });
-
-    socket.on('set-receiver', () => {
-        console.log('You are the Viewer 👀');
-        document.body.insertAdjacentHTML('afterbegin', '<h3>You are the Viewer 👀</h3>');
-    });
-
-    async function startCamera() {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        video.srcObject = localStream;
-
-        peerConnection = new RTCPeerConnection(iceServers);
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-        peerConnection.onicecandidate = ({ candidate }) => {
-            if (candidate) {
-                socket.emit('ice-candidate', candidate);
-            }
+        const iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
         };
 
-        socket.on('ice-candidate', (candidate) => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        socket.emit('join');
+
+        socket.on('set-sender', async () => {
+            console.log('You are the Sender 📷');
+            document.body.insertAdjacentHTML('afterbegin', '<h3>You are the Sender 📷</h3>');
+            await startCamera();
         });
 
-        socket.on('answer', async (answer) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        socket.on('set-receiver', () => {
+            console.log('You are the Viewer 👀');
+            document.body.insertAdjacentHTML('afterbegin', '<h3>You are the Viewer 👀</h3>');
+            setupReceiver();
         });
 
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        socket.emit('offer', offer);
-    }
+        async function startCamera() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            video.srcObject = localStream;
 
-    socket.on('offer', async (offer) => {
-        console.log('Received offer');
-        peerConnection = new RTCPeerConnection(iceServers);
+            peerConnection = new RTCPeerConnection(iceServers);
 
-        peerConnection.onicecandidate = ({ candidate }) => {
-            if (candidate) {
-                socket.emit('ice-candidate', candidate);
-            }
-        };
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
 
-        peerConnection.ontrack = ({ streams: [stream] }) => {
-            console.log('Received remote stream');
-            video.srcObject = stream;
-        };
+            peerConnection.onicecandidate = ({ candidate }) => {
+                if (candidate) {
+                    socket.emit('ice-candidate', candidate);
+                }
+            };
 
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        socket.emit('answer', answer);
-    });
-</script>
+            socket.on('ice-candidate', (candidate) => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
+
+            socket.on('answer', async (answer) => {
+                console.log('Received answer');
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            });
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
+        }
+
+        function setupReceiver() {
+            peerConnection = new RTCPeerConnection(iceServers);
+
+            peerConnection.onicecandidate = ({ candidate }) => {
+                if (candidate) {
+                    socket.emit('ice-candidate', candidate);
+                }
+            };
+
+            peerConnection.ontrack = ({ streams: [stream] }) => {
+                console.log('Received remote stream');
+                video.srcObject = stream;
+            };
+
+            socket.on('ice-candidate', (candidate) => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
+
+            socket.on('offer', async (offer) => {
+                console.log('Received offer');
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('answer', answer);
+            });
+        }
+    </script>
+</body>
+</html>
