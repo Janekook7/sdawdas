@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Live Call</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>WebRTC Live Call</h1>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+
+    <script>
+        const socket = io.connect('http://localhost:5000');  // Connect to signaling server
+
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        let localStream;
+        let peerConnection;
+        const servers = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // STUN server
+        };
+
+        // Get local media (audio + video)
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+                localStream = stream;
+                localVideo.srcObject = stream;
+            })
+            .catch((err) => {
+                console.error('Error accessing media devices:', err);
+            });
+
+        // Create a peer connection
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(servers);
+            peerConnection.addEventListener('icecandidate', handleIceCandidate);
+            peerConnection.addEventListener('track', handleTrackEvent);
+
+            // Add the local stream tracks to the peer connection
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
+
+        // Handle ICE candidates
+        function handleIceCandidate(event) {
+            if (event.candidate) {
+                socket.emit('ice-candidate', event.candidate);
+            }
+        }
+
+        // Handle remote tracks
+        function handleTrackEvent(event) {
+            remoteVideo.srcObject = event.streams[0];
+        }
+
+        // Create an offer to start the call
+        function createOffer() {
+            createPeerConnection();
+
+            peerConnection.createOffer()
+                .then((offer) => {
+                    return peerConnection.setLocalDescription(offer);
+                })
+                .then(() => {
+                    socket.emit('offer', peerConnection.localDescription);
+                })
+                .catch((err) => {
+                    console.error('Error creating offer:', err);
+                });
+        }
+
+        // Handle offer from remote peer
+        socket.on('offer', (offer) => {
+            createPeerConnection();
+
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+                .then(() => {
+                    return peerConnection.createAnswer();
+                })
+                .then((answer) => {
+                    return peerConnection.setLocalDescription(answer);
+                })
+                .then(() => {
+                    socket.emit('answer', peerConnection.localDescription);
+                })
+                .catch((err) => {
+                    console.error('Error handling offer:', err);
+                });
+        });
+
+        // Handle answer from remote peer
+        socket.on('answer', (answer) => {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+                .catch((err) => {
+                    console.error('Error setting remote description:', err);
+                });
+        });
+
+        // Handle ICE candidates from remote peer
+        socket.on('ice-candidate', (candidate) => {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                .catch((err) => {
+                    console.error('Error adding ICE candidate:', err);
+                });
+        });
+
+        // Start the call when ready
+        createOffer();
+    </script>
+</body>
+</html>
