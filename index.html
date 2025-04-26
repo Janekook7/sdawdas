@@ -3,112 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Live Call</title>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <title>WebRTC Demo</title>
 </head>
 <body>
-    <h1>WebRTC Live Call</h1>
+    <h2>Your Camera Feed:</h2>
     <video id="localVideo" autoplay muted></video>
+
+    <h2>Remote Camera Feed:</h2>
     <video id="remoteVideo" autoplay></video>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
     <script>
-        const socket = io.connect('http://localhost:5000');  // Connect to signaling server
-
+        const socket = io.connect('http://localhost:5000'); // Replace with your signaling server URL
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
+
         let localStream;
         let peerConnection;
-        const servers = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // STUN server
+        const iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }, // Use a public STUN server
+                // Optional TURN server (if needed)
+                { urls: 'turn:your-turn-server.com', username: 'user', credential: 'password' }
+            ]
         };
 
-        // Get local media (audio + video)
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then((stream) => {
-                localStream = stream;
-                localVideo.srcObject = stream;
-            })
-            .catch((err) => {
-                console.error('Error accessing media devices:', err);
-            });
-
-        // Create a peer connection
-        function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(servers);
-            peerConnection.addEventListener('icecandidate', handleIceCandidate);
-            peerConnection.addEventListener('track', handleTrackEvent);
-
-            // Add the local stream tracks to the peer connection
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
+        // Set up local video stream
+        async function getLocalStream() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            localVideo.srcObject = localStream;
         }
 
-        // Handle ICE candidates
-        function handleIceCandidate(event) {
-            if (event.candidate) {
-                socket.emit('ice-candidate', event.candidate);
-            }
+        // WebRTC setup
+        async function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(iceServers);
+
+            // Send ICE candidates to the signaling server
+            peerConnection.onicecandidate = ({ candidate }) => {
+                if (candidate) {
+                    socket.emit('ice-candidate', candidate);
+                }
+            };
+
+            // Display remote stream when connection is established
+            peerConnection.ontrack = ({ streams: [stream] }) => {
+                remoteVideo.srcObject = stream;
+            };
+
+            // Add local stream to the peer connection
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Create an offer and send it to the signaling server
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
         }
 
-        // Handle remote tracks
-        function handleTrackEvent(event) {
-            remoteVideo.srcObject = event.streams[0];
-        }
-
-        // Create an offer to start the call
-        function createOffer() {
-            createPeerConnection();
-
-            peerConnection.createOffer()
-                .then((offer) => {
-                    return peerConnection.setLocalDescription(offer);
-                })
-                .then(() => {
-                    socket.emit('offer', peerConnection.localDescription);
-                })
-                .catch((err) => {
-                    console.error('Error creating offer:', err);
-                });
-        }
-
-        // Handle offer from remote peer
-        socket.on('offer', (offer) => {
-            createPeerConnection();
-
-            peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
-                .then(() => {
-                    return peerConnection.createAnswer();
-                })
-                .then((answer) => {
-                    return peerConnection.setLocalDescription(answer);
-                })
-                .then(() => {
-                    socket.emit('answer', peerConnection.localDescription);
-                })
-                .catch((err) => {
-                    console.error('Error handling offer:', err);
-                });
+        // Handle incoming offer
+        socket.on('offer', async (offer) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
         });
 
-        // Handle answer from remote peer
+        // Handle incoming answer
         socket.on('answer', (answer) => {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-                .catch((err) => {
-                    console.error('Error setting remote description:', err);
-                });
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         });
 
-        // Handle ICE candidates from remote peer
+        // Handle incoming ICE candidates
         socket.on('ice-candidate', (candidate) => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                .catch((err) => {
-                    console.error('Error adding ICE candidate:', err);
-                });
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
         });
 
-        // Start the call when ready
-        createOffer();
+        // Start the process
+        getLocalStream();
+        createPeerConnection();
     </script>
 </body>
 </html>
